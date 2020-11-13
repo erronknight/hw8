@@ -5,7 +5,7 @@
 #include "opencv2/core/utility.hpp"
 #include "opencv2/imgproc.hpp"
 #include "opencv2/imgcodecs.hpp"
-#include "opencv2/highgui.hpp"
+// #include "opencv2/highgui.hpp"
 
 #include "robot.hh"
 
@@ -138,7 +138,7 @@ Robot::on_frame(ConstImageStampedPtr &msg)
     this->frame = temp2.clone();
     assert(this->frame.size().height > 0);
     free(data);
-
+    std::cout << "IMAGAFKDSAFHJAE-------------------((((((((((((((&&&&&&&&&&&&&&*********" << endl;
     this->on_update(this);
 }
 
