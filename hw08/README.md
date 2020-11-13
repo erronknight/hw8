@@ -1,4 +1,9 @@
 
+# Attributions  
+-  Uses Starter Code   
+- Uses Joseph Straceski's code  
+    https://github.com/jstraceski/cs5335hw-gazebo/tree/hw07
+
 # Gazebo Simulation HW
 
 This contains a simulation setup and sample control program for assignments in a

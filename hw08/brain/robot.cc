@@ -106,7 +106,7 @@ Robot::set_vel(double lvel, double rvel)
     lvel = clamp(-4, lvel + l_error, 4);
     rvel = clamp(-4, rvel + r_error, 4);
 
-    //cout << "set_vel: " << lvel << "," << rvel << endl;
+    // cout << "set_vel: " << lvel << "," << rvel << endl;
     int xx = 128 + int(lvel * 25.0);
     int yy = 128 + int(rvel * 25.0);
     auto msg = msgs::ConvertAny(xx * 256 + yy);
