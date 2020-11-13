@@ -138,7 +138,6 @@ Robot::on_frame(ConstImageStampedPtr &msg)
     this->frame = temp2.clone();
     assert(this->frame.size().height > 0);
     free(data);
-    std::cout << "IMAGAFKDSAFHJAE-------------------((((((((((((((&&&&&&&&&&&&&&*********" << endl;
     this->on_update(this);
 }
 

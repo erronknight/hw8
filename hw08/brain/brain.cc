@@ -86,6 +86,101 @@ float radius = float(grid_offset);
 std::vector<std::vector<float>> tile_grid(size, std::vector<float>(size, -1));
 std::vector<std::vector<float>> tile_grid_thread(size, std::vector<float>(size, -1));
 
+float cam_left = 0;
+float cam_mid = 0;
+float cam_right = 0;
+
+double get_30_deg(double va) {
+    return (2* (va / sqrt(3.0)));
+}
+
+// theta <= 40
+double get_deg_adj(double va, double thet) {
+    return (va / cos((thet / 180) * PI));
+}
+
+double mod_val(double aa) {
+    return 1.3 * get_deg_adj(2.0 *(aa) / 300.0, (400 - (aa) / 10));
+}
+
+std::vector<std::vector<int>> get_im_vals(cv::Mat frame) {
+    // sky ~(178, 178, 178)
+    // floor ~(155, 155, 155)
+    // walls avg < 120
+    std::vector<std::vector<int>> v;
+    std::vector<int> vmid = {0, 0, 0};
+    std::vector<int> vlft = {0, 0, 0};
+    std::vector<int> vrgt = {0, 0, 0};
+
+    v = {
+            {0, 0, 0},
+            {0, 0, 0},
+            {0, 0, 0}
+        };
+
+    cv::Vec3b pc;
+    if (frame.cols > 0 && frame.cols == 800 && frame.rows == 800) {
+        int cmid = 400;
+        int clft = 100;
+        int crgt = 700;
+        int avg = 0;
+        bool m_sky = true;
+        bool l_sky = true;
+        bool r_sky = true;
+
+        for (int rr = 0; rr < frame.rows; rr+=3) {
+            // left
+            pc = frame.at<cv::Vec3b>(rr,clft);
+            avg = ((int)pc.val[0] + (int)pc.val[1] + (int)pc.val[2]) / 3;
+
+            if (avg < 120 && l_sky) {
+                l_sky = false;
+                vlft[0] = rr;
+            } else if (!l_sky) {
+                vlft[1] = rr - vlft[0];
+                vlft[2] = 799 - rr;
+            }
+
+            // mid
+            pc = frame.at<cv::Vec3b>(rr,cmid);
+            avg = ((int)pc.val[0] + (int)pc.val[1] + (int)pc.val[2]) / 3;
+            if (avg < 120 && m_sky) {
+                m_sky = false;
+                vmid[0] = rr;
+            } else if (!m_sky) {
+                vmid[1] = rr - vmid[0];
+                vmid[2] = 799 - rr;
+            }
+
+            // right
+            pc = frame.at<cv::Vec3b>(rr,crgt);
+            avg = ((int)pc.val[0] + (int)pc.val[1] + (int)pc.val[2]) / 3;
+            if (avg < 120 && r_sky) {
+                r_sky = false;
+                vrgt[0] = rr;
+            } else if (!r_sky) {
+                vrgt[1] = rr - vrgt[0];
+                vrgt[2] = 799 - rr;
+            }
+        }
+        
+        // cout << "mid framasmefmw asd " << (int)pixelColor.val[0] << " " << (int)pixelColor.val[1] << " " << (int)pixelColor.val[2] << endl;
+        v[0][0] = vlft[0];
+        v[0][1] = vlft[1];
+        v[0][2] = vlft[2];
+
+        v[1][0] = vmid[0];
+        v[1][1] = vmid[1];
+        v[1][2] = vmid[2];
+
+        v[2][0] = vrgt[0];
+        v[2][1] = vrgt[1];
+        v[2][2] = vrgt[2];
+    }
+    // basically frame not ready
+    return v;
+}
+
 void print_arr(std::vector<float> v)
 {
     for (auto elem : v)
@@ -141,8 +236,13 @@ void draw_path(std::deque<std::vector<int>> d_path)
     }
 }
 
-// apply a motion to the robot and predict the outcome
 void cmd_vel(Robot *robot, float vx, float vy, bool print)
+{
+    robot->set_vel(vx, vy);
+}
+
+// apply a motion to the robot and predict the outcome
+void cmd_vel2(Robot *robot, float vx, float vy, bool print)
 {
     float tot = guess_diff[0] * guess_diff[0] + guess_diff[1] * guess_diff[1];
     float coll_tot = coll[0] * coll[0] + coll[1] * coll[1];
@@ -746,7 +846,7 @@ bool drive_to_point(Robot *robot, std::vector<int> point)
 
     bool flag = fwd < 0.5;
     //   std::vector<float> v = {brgt, rgt, frgt, fwd, flft, lft, blft};
-    std::vector<float> v = {0, 0, 0, fwd, 0, 0, 0};
+    std::vector<float> v = {0, 0, cam_right, fwd, cam_left, 0, 0};
 
     float speed = 2.5f;
     float turn = 0.5f;
@@ -820,7 +920,7 @@ void main_drive(Robot *robot)
     cout << coll[0] << " = " << coll[1] << " " << time_delta << endl;
     cout << save_guess[0] - guess[0] << " - " << save_guess[1] - guess[1] << " " << time_delta << endl;
 
-    fix_guess(robot);
+    // fix_guess(robot);
 
     cout << "go" << endl;
     guess = {robot->pos_x / input_scalar + offset[0], robot->pos_y / input_scalar + offset[1], robot->pos_t};
@@ -833,6 +933,26 @@ void main_drive(Robot *robot)
 
     float x_val1 = guess[0] + clamp(0.0f, r, 2.0f) * cos(guess[2]);
     float y_val1 = guess[1] + clamp(0.0f, r, 2.0f) * sin(guess[2]);
+    bresenham(guess[0], guess[1], x_val1, y_val1, r <= 2.0f, false, tile_grid, true, 1);
+
+    // r = cam_left;
+    // if (r > 2.1)
+    // {
+    //     r = 2.0001f;
+    // }
+
+    x_val1 = guess[0] + clamp(0.0f, r, 2.0f) * cos((PI/24) + guess[2]);
+    y_val1 = guess[1] + clamp(0.0f, r, 2.0f) * sin((PI/24) + guess[2]);
+    bresenham(guess[0], guess[1], x_val1, y_val1, r <= 2.0f, false, tile_grid, true, 1);
+
+    // r = cam_right;
+    // if (r > 2.1)
+    // {
+    //     r = 2.0001f;
+    // }
+
+    x_val1 = guess[0] + clamp(0.0f, r, 2.0f) * cos(-1 *(PI/24) + guess[2]);
+    y_val1 = guess[1] + clamp(0.0f, r, 2.0f) * sin(-1 *(PI/24) + guess[2]);
     bresenham(guess[0], guess[1], x_val1, y_val1, r <= 2.0f, false, tile_grid, true, 1);
 
     /*
@@ -865,8 +985,11 @@ void main_drive(Robot *robot)
     // bool flag = brgt < c_dist || rgt < c_dist || frgt < c_dist || fwd < 0.5 || flft < c_dist || lft < c_dist || blft < c_dist;
     // std::vector<float> v = {brgt, rgt, frgt, fwd, flft, lft, blft};
 
+    float frgt = cam_right;
+    float flft = cam_left;
+
     bool flag = fwd < 0.5;
-    std::vector<float> v = {0, 0, 0, fwd, 0, 0, 0};
+    std::vector<float> v = {0, 0, cam_right, fwd, cam_left, 0, 0};
 
     for (int i = 0; i < target_path.size(); ++i)
     {
@@ -929,22 +1052,23 @@ void main_drive(Robot *robot)
     float f_min = 0.6f;
     float f2_min = 0.75f;
     float f3_min = 0.9f;
-
-    /*
-
-    if (fwd < 1.2 || frgt < f_min || flft < f_min)
+    
+    if (fwd < 1.2 || frgt < f_min && robot->range > 0.58 || flft < f_min && robot->range > 0.58)
     {
-        if (lft < 1.0 && flft > 1.8 || left_follow)
+        // if (lft < 1.0 && flft > 1.8 || left_follow)
+        if (flft > 1.8 || left_follow)
         {
             cout << "A1" << endl;
             cmd_vel(robot, -speed, speed, false);
         }
-        else if (rgt < 1.0 && frgt > 1.8 || right_follow)
+        // else if (rgt < 1.0 && frgt > 1.8 || right_follow)
+        else if (frgt > 1.8 || right_follow)
         {
             cout << "A2" << endl;
             cmd_vel(robot, speed, -speed, false);
         }
-        else if (rgt + frgt > lft + flft)
+        // else if (rgt + frgt > lft + flft)
+        else if (int(left_follow) + frgt > int(right_follow) + flft)
         {
             cout << "B1" << endl;
             cmd_vel(robot, speed, -speed, false);
@@ -955,49 +1079,59 @@ void main_drive(Robot *robot)
             cmd_vel(robot, -speed, speed, false);
         }
     }
-    else if (lft < 1.8 && lft > 1.1 && flft > lft)
+    // else if (lft < 1.8 && lft > 1.1 && flft > lft)
+    // {
+    //     cout << "E" << endl;
+    //     cmd_vel(robot, speed - turn, speed + turn, false);
+    // }
+    // else if ((flft / sqrt(2) < f2_min || lft < f2_min))
+    else if ((flft / sqrt(2) < f2_min))
     {
-        cout << "E" << endl;
-        cmd_vel(robot, speed - turn, speed + turn, false);
-    }
-    else if ((flft / sqrt(2) < f2_min || lft < f2_min))
-    {
-        if (flft / sqrt(2) < 0.6 && lft < flft / sqrt(2))
+        // if (flft / sqrt(2) < 0.6 && lft < flft / sqrt(2))
+        if (flft / sqrt(2) < 0.6)
         {
+            cout << "EEE" << endl;
             cmd_vel(robot, speed, speed, false);
         }
-        else if (lft / 1.3 > flft / sqrt(2) || flft / sqrt(2) < f_min)
+        // else if (lft / 1.3 > flft / sqrt(2) || flft / sqrt(2) < f_min)
+        else if (flft / sqrt(2) < f_min)
         {
             cmd_vel(robot, speed + turn, speed - turn, false);
             cout << "F1" << endl;
         }
-        else if (lft * 1.3 < flft / sqrt(2) && flft < f3_min)
+        // else if (lft * 1.3 < flft / sqrt(2) && flft < f3_min)
+        else if (flft < f3_min)
         {
             cmd_vel(robot, speed - turn, speed + turn, false);
             cout << "F2" << endl;
         }
         else
         {
+            cout << "EDAWED" << endl;
             cmd_vel(robot, speed, speed, false);
         }
     }
-    else if (rgt < 1.8 && rgt > 1.1 && frgt > rgt && blft > 1.7 && lft > 1.7 && flft > 1.7)
+    // else if (rgt < 1.8 && rgt > 1.1 && frgt > rgt && blft > 1.7 && lft > 1.7 && flft > 1.7)
+    // {
+    //     cout << "C" << endl;
+    //     cmd_vel(robot, speed + turn, speed - turn, false);
+    // }
+    // else if ((frgt / sqrt(2) < f2_min || rgt < f2_min) && blft > 1.7 && lft > 1.7 && flft > 1.7)
+    else if ((frgt / sqrt(2) < f2_min || flft > 1.7))
     {
-        cout << "C" << endl;
-        cmd_vel(robot, speed + turn, speed - turn, false);
-    }
-    else if ((frgt / sqrt(2) < f2_min || rgt < f2_min) && blft > 1.7 && lft > 1.7 && flft > 1.7)
-    {
-        if (frgt / sqrt(2) < 0.6 && rgt < frgt / sqrt(2))
+        // if (frgt / sqrt(2) < 0.6 && rgt < frgt / sqrt(2))
+        if (frgt / sqrt(2) < 0.6)
         {
             cmd_vel(robot, speed, speed, false);
         }
-        else if (rgt / 1.3 > frgt / sqrt(2) || frgt / sqrt(2) < f_min)
+        // else if (rgt / 1.3 > frgt / sqrt(2) || frgt / sqrt(2) < f_min)
+        else if (frgt / sqrt(2) < f_min)
         {
             cmd_vel(robot, speed - turn, speed + turn, false);
             cout << "D1" << endl;
         }
-        else if (rgt * 1.3 < frgt / sqrt(2) && frgt < f3_min)
+        // else if (rgt * 1.3 < frgt / sqrt(2) && frgt < f3_min)
+        else if (frgt < f3_min)
         {
             cmd_vel(robot, speed + turn, speed - turn, false);
             cout << "D2" << endl;
@@ -1007,31 +1141,33 @@ void main_drive(Robot *robot)
             cmd_vel(robot, speed, speed, false);
         }
     }
-    else if (((blft < 1.5 && (lft > 1.5 || flft > 1.5)) || (lft < 1.3 && flft > 1.5)) && rgt > 1.2)
-    {
-        cmd_vel(robot, speed - turn * 2, speed + turn, false);
-        cout << "G" << endl;
-    }
-    else if (((brgt < 1.5 && (rgt > 1.5 || frgt > 1.5)) || (rgt < 1.3 && frgt > 1.5)) && lft > 1.2)
-    {
-        cmd_vel(robot, speed + turn, speed - turn * 2, false);
-        cout << "G2" << endl;
-    }
+    // else if (((blft < 1.5 && (lft > 1.5 || flft > 1.5)) || (lft < 1.3 && flft > 1.5)) && rgt > 1.2)
+    // {
+    //     cmd_vel(robot, speed - turn * 2, speed + turn, false);
+    //     cout << "G" << endl;
+    // }
+    // else if (((brgt < 1.5 && (rgt > 1.5 || frgt > 1.5)) || (rgt < 1.3 && frgt > 1.5)) && lft > 1.2)
+    // {
+    //     cmd_vel(robot, speed + turn, speed - turn * 2, false);
+    //     cout << "G2" << endl;
+    // }
     else
     {
         cmd_vel(robot, speed, speed, false);
         cout << "fwd" << endl;
-        if (rgt > 1.8 && frgt > 1.8)
+        // if (rgt > 1.8 && frgt > 1.8)
+        if (frgt > 1.8)
         {
             right_follow = false;
         }
-        if (lft > 1.8 && flft > 1.8)
+        // if (lft > 1.8 && flft > 1.8)
+        if (flft > 1.8)
         {
             left_follow = false;
         }
     }
 
-    */
+    
 }
 
 // main callback
@@ -1044,6 +1180,26 @@ void callback(Robot *robot)
 
     cout << "frame w " << robot->frame.cols << " h " << robot->frame.rows << endl;
     cout << "frame2 w " << robot->frame.size().width << " h " << robot->frame.size().height << endl;
+
+    std::vector<std::vector<int>> fr_vals = get_im_vals(robot->frame);
+    cout << "done" << endl;
+
+    // cout << "frame v " << fr_vals[0][0] << " " << fr_vals[1][0] << " " << fr_vals[2][0] << endl;
+    cout << "frame v ";
+    double ccc = 300.0;
+
+    cam_left = get_30_deg(mod_val(double(fr_vals[0][0])));
+    cam_mid = mod_val(double(fr_vals[1][0]));
+    cam_left = get_30_deg(mod_val(double(fr_vals[2][0])));
+    cout << get_30_deg(mod_val(double(fr_vals[0][0]))) << " ";
+    cout << mod_val(double(fr_vals[1][0])) << " ";
+    cout << get_30_deg(mod_val(double(fr_vals[2][0]))) << " ";
+    cout << endl;
+
+    // if (robot->frame.cols > 0) {
+    //     cv::Vec3b pixelColor = robot->frame.at<cv::Vec3b>(400,400);
+    //     cout << "mid framasmefmw asd " << (int)pixelColor.val[0] << " " << (int)pixelColor.val[1] << " " << (int)pixelColor.val[2] << endl;
+    // }
 
     robot->set_vel(0.0, 0.0);
 
